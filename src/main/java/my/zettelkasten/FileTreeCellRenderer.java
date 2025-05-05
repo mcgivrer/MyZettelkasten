@@ -10,6 +10,11 @@ import java.util.regex.Pattern;
 public class FileTreeCellRenderer extends DefaultTreeCellRenderer {
     private final Icon noteIcon = UIManager.getIcon("FileView.fileIcon");
     private final Icon draftIcon = UIManager.getIcon("FileView.directoryIcon");
+    private final TextEditorApp app;
+
+    public FileTreeCellRenderer(TextEditorApp app) {
+        this.app = app;
+    }
 
     @Override
     public Component getTreeCellRendererComponent(JTree tree, Object value,
@@ -24,16 +29,16 @@ public class FileTreeCellRenderer extends DefaultTreeCellRenderer {
             String datetimePart = name[0];
             String titlePart = name[1];
 
-            StringBuilder labelText = new StringBuilder("<html><b>").append(datetimePart).append("</b>");
-            if (!datetimePart.isEmpty() && !titlePart.isEmpty()) {
-                labelText.append(" - ");
-            }
-            if (!titlePart.isEmpty()) {
-                labelText.append(titlePart.replaceAll("-", " "));
-            }
-            labelText.append("</html>");
+            boolean isOpen = app.isFileOpen(fileNode.file);
+            String dateStyle = isOpen ? "color:blue; font-weight:bold;" : "font-weight:bold;";
 
-            label.setText(labelText.toString());
+            String fullLabel = !datetimePart.isEmpty()
+                    ? "<span style='" + dateStyle + "'>" + datetimePart + "</span> | " + titlePart
+                    : titlePart;
+
+            String shortLabel = truncateToFit(label, fullLabel, AppConfig.getTreeTitleMaxWidth());
+
+            label.setText("<html>" + highlightDate(shortLabel) + "</html>");
             label.setIcon(titlePart.toLowerCase().contains("brouillon") ? draftIcon : noteIcon);
         }
 
@@ -58,4 +63,22 @@ public class FileTreeCellRenderer extends DefaultTreeCellRenderer {
         return new String[]{"", name};
     }
 
+    private String highlightDate(String labelText) {
+        return labelText.replaceFirst("^((\\d{12})?)", "<b>$1</b>");
+    }
+
+    private String truncateToFit(JLabel label, String text, int maxPixelWidth) {
+        FontMetrics fm = label.getFontMetrics(label.getFont());
+        String ellipsis = "...";
+        int fullWidth = fm.stringWidth(text);
+        if (fullWidth <= maxPixelWidth) return text;
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            String temp = text.substring(0, i) + ellipsis;
+            if (fm.stringWidth(temp) > maxPixelWidth) break;
+            sb.append(text.charAt(i));
+        }
+        return sb.toString() + ellipsis;
+    }
 }

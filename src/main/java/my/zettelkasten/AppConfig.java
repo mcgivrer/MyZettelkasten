@@ -32,4 +32,13 @@ public class AppConfig {
             System.err.println("Erreur d’écriture dans le fichier de configuration : " + e.getMessage());
         }
     }
+
+    public static int getTreeTitleMaxWidth() {
+        return Integer.parseInt(get("treeTitleMaxWidth", "500")); // largeur par défaut en pixels
+    }
+
+    public static void setTreeTitleMaxWidth(int px) {
+        set("treeTitleMaxWidth", String.valueOf(px));
+    }
+
 }

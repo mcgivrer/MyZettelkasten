@@ -48,7 +48,7 @@ public class TextEditorApp extends JFrame {
 
     private final DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode("Fichiers");
     private final DefaultTreeModel treeModel = new DefaultTreeModel(rootNode);
-    private final JTree fileTree = new JTree(treeModel);
+    final JTree fileTree = new JTree(treeModel);
 
 
     public TextEditorApp() {
@@ -62,7 +62,7 @@ public class TextEditorApp extends JFrame {
         JPanel treePanel = new JPanel(new BorderLayout());
         treePanel.add(searchField, BorderLayout.NORTH);
         treePanel.add(new JScrollPane(fileTree), BorderLayout.CENTER);
-        fileTree.setCellRenderer(new FileTreeCellRenderer());
+        fileTree.setCellRenderer(new FileTreeCellRenderer(this));
 
         fileTree.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) {
@@ -160,7 +160,7 @@ public class TextEditorApp extends JFrame {
         }
     }
 
-    private void rebuildTree() {
+    private void rebuildTree(boolean openFolders) {
         rootNode.removeAllChildren();
         String query = searchField.getText().toLowerCase().trim();
 
@@ -179,7 +179,22 @@ public class TextEditorApp extends JFrame {
         }
 
         treeModel.reload();
-        fileTree.expandRow(0);
+        expandAllNodes(fileTree);
+    }
+
+    private void expandAllNodes(JTree tree) {
+        for (int i = 0; i < tree.getRowCount(); i++) {
+            tree.expandRow(i);
+        }
+
+        // Cas où des expansions dynamiques modifient la taille
+        int previous;
+        do {
+            previous = tree.getRowCount();
+            for (int i = 0; i < previous; i++) {
+                tree.expandRow(i);
+            }
+        } while (tree.getRowCount() > previous);
     }
 
     private String computeGroupLabel(File file) {
@@ -251,9 +266,23 @@ public class TextEditorApp extends JFrame {
             int index = tabbedPane.indexOfComponent(fileTab);
             tabbedPane.setTabComponentAt(index, createTabHeader(file.getName(), fileTab));
             tabbedPane.setSelectedComponent(fileTab);
+            fileTree.repaint();
         } catch (IOException e) {
             showError("file.read.error", e.getMessage());
         }
+    }
+
+    public boolean isFileOpen(File file) {
+        for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+            Component comp = tabbedPane.getComponentAt(i);
+            if (comp instanceof FileTab tab) {
+                File f = tab.getFile();
+                if (f != null && f.getAbsolutePath().equals(file.getAbsolutePath())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private Component createTabHeader(String fullTitle, FileTab tab) {
@@ -303,6 +332,7 @@ public class TextEditorApp extends JFrame {
         }
 
         tabbedPane.remove(tab);
+        fileTree.repaint();
     }
 
 
@@ -462,13 +492,32 @@ public class TextEditorApp extends JFrame {
     }
 
     private void newEmptyTab() {
-        File tempFile = new File("Nouveau " + (tabbedPane.getTabCount() + 1));
-        FileTab fileTab = new FileTab(tempFile, "");
-        tabbedPane.addTab(tempFile.getName(), fileTab);
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
+        String defaultTitle = bundle.getString("menu.file.new.defaultTitle").formatted(timestamp);
+        File tempFile = new File(defaultTitle); // virtuel, pas encore sauvegardé
+
+        String content = generateInitialContent();
+        FileTab fileTab = new FileTab(tempFile, content);
+        tabbedPane.addTab(shortenTitle(defaultTitle), fileTab);
+
         int index = tabbedPane.indexOfComponent(fileTab);
-        tabbedPane.setTabComponentAt(index, createTabHeader(tempFile.getName(), fileTab));
+        tabbedPane.setTabComponentAt(index, createTabHeader(defaultTitle, fileTab));
         tabbedPane.setSelectedComponent(fileTab);
     }
+
+    private String shortenTitle(String title) {
+        return (title.length() > 15 ? title.substring(0, 15) + "…" : title).replaceAll("-", " ");
+    }
+
+    private String generateInitialContent() {
+        LocalDateTime now = LocalDateTime.now();
+        String timestamp = now.format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
+        String dateFormatted = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String username = System.getProperty("user.name");
+        String defaultTitle = bundle.getString("menu.file.new.defaultTitle").formatted(timestamp);
+        return defaultTitle + "\n\n::" + dateFormatted + " @" + username + "\n\n----\n\n\n\n----";
+    }
+
 
     private void setupPopupMenu() {
         JPopupMenu popup = new JPopupMenu();
@@ -490,12 +539,60 @@ public class TextEditorApp extends JFrame {
         JMenuItem quitItem = new JMenuItem(bundle.getString("menu.quit"));
         quitItem.addActionListener(e -> confirmAndExit());
 
+        JMenuItem deleteItem = new JMenuItem(bundle.getString("menu.delete"));
+        deleteItem.addActionListener(e -> deleteSelectedFiles());
+
         popup.add(openItem);
         popup.add(saveItem);
+        popup.addSeparator();
+        popup.add(deleteItem);
         popup.addSeparator();
         popup.add(quitItem);
 
         fileTree.setComponentPopupMenu(popup);
+    }
+
+    private void deleteSelectedFiles() {
+        TreePath[] paths = fileTree.getSelectionPaths();
+        if (paths == null || paths.length == 0) return;
+
+        List<File> filesToDelete = new ArrayList<>();
+
+        for (TreePath path : paths) {
+            Object nodeObj = ((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject();
+            if (nodeObj instanceof FileNode fileNode) {
+                filesToDelete.add(fileNode.file);
+            }
+        }
+
+        if (filesToDelete.isEmpty()) return;
+
+        StringBuilder confirmMsg = new StringBuilder("Voulez-vous supprimer les fichiers suivants ?\n\n");
+        if (filesToDelete.size() > 5) {
+            confirmMsg.append("- ").append(filesToDelete.size()).append(" fichiers\n");
+        } else {
+            for (File f : filesToDelete) {
+                confirmMsg.append("- ").append(f.getName()).append("\n");
+            }
+        }
+
+        int confirm = JOptionPane.showConfirmDialog(this, confirmMsg.toString(), "Confirmation de suppression",
+                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            for (File f : filesToDelete) {
+                try {
+                    Files.deleteIfExists(f.toPath());
+                } catch (IOException e) {
+                    JOptionPane.showMessageDialog(this,
+                            "Erreur lors de la suppression du fichier : " + f.getName(),
+                            "Erreur", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+
+            // Recharge l'arbre
+            loadFiles(currentDirectory);
+        }
     }
 
     private void chooseDirectory() {
@@ -526,13 +623,13 @@ public class TextEditorApp extends JFrame {
         allFiles.clear();
         listModel.clear();
 
-        File[] files = directory.listFiles((dir, name) -> name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".java"));
+        File[] files = directory.listFiles((dir, name) -> name.endsWith(".md"));
         if (files == null) return;
 
         Arrays.sort(files, Comparator.comparingLong(this::extractDateSortKey).reversed());
         allFiles.addAll(List.of(files));
 
-        rebuildTree(); // affiche la liste filtrée
+        rebuildTree(true); // affiche la liste filtrée
     }
 
 
@@ -585,14 +682,64 @@ public class TextEditorApp extends JFrame {
     private void saveCurrentTab() {
         Component selected = tabbedPane.getSelectedComponent();
         if (selected instanceof FileTab tab) {
-            try {
-                Files.writeString(tab.getFile().toPath(), tab.getContent());
-                JOptionPane.showMessageDialog(this, bundle.getString("file.save.success"));
-            } catch (IOException e) {
-                showError("file.save.error", e.getMessage());
+            File file = tab.getFile();
+
+            // Si fichier non encore enregistré (pas de chemin réel)
+            if (!file.exists() || file.getParentFile() == null) {
+                saveAs(tab);
+            } else {
+                writeToDisk(tab, file);
             }
+            loadFiles(currentDirectory);
         }
     }
+
+    private void saveAs(FileTab tab) {
+        JFileChooser chooser = new JFileChooser();
+
+        // Répertoire par défaut
+        String lastPath = AppConfig.get("lastDirectory", ".");
+        chooser.setCurrentDirectory(new File(lastPath));
+
+        // Nom de fichier proposé
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
+        // extract first line as file name
+        String suggestedName = bundle.getString("menu.file.new.title")
+                .formatted(tab.getContent().split("\n")[0]
+                        .replaceAll(" ", "-"));
+        chooser.setSelectedFile(new File(suggestedName));
+
+        // Filtre .md
+        chooser.setFileFilter(new FileNameExtensionFilter("Fichiers Markdown (*.md)", "md"));
+
+        int result = chooser.showSaveDialog(this);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File chosen = chooser.getSelectedFile();
+
+            // Ajoute .md si absent
+            if (!chosen.getName().toLowerCase().endsWith(".md")) {
+                chosen = new File(chosen.getAbsolutePath() + ".md");
+            }
+
+            tab.setFile(chosen); // ← à implémenter dans FileTab
+            AppConfig.set("lastDirectory", chosen.getParent());
+            AppConfig.save();
+
+            writeToDisk(tab, chosen);
+        }
+    }
+
+    private void writeToDisk(FileTab tab, File file) {
+        try {
+            Files.writeString(file.toPath(), tab.getContent());
+            tab.markSaved();
+            JOptionPane.showMessageDialog(this, bundle.getString("file.save.success"));
+        } catch (IOException e) {
+            String msg = String.format(bundle.getString("file.save.error"), e.getMessage());
+            JOptionPane.showMessageDialog(this, msg, "Erreur", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
 
     private File chooseSaveLocation() {
         int result = fileChooser.showSaveDialog(this);
