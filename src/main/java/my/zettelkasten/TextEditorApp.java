@@ -3,6 +3,7 @@ package my.zettelkasten;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
@@ -336,39 +337,57 @@ public class TextEditorApp extends JFrame {
 
     private void savePreferencesCopy() {
         JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle(bundle.getString("preferences.menu.copy"));
+        chooser.setDialogTitle(bundle.getString("preferences.dialog.copy.title"));
         chooser.setSelectedFile(new File("myzettelkasten-copy.properties"));
 
         if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File selected = chooser.getSelectedFile();
+            if (!selected.getName().toLowerCase().endsWith(".properties")) {
+                selected = new File(selected.getAbsolutePath() + ".properties");
+            }
+
             try (InputStream in = new FileInputStream("myzettelkasten.properties");
-                 OutputStream out = new FileOutputStream(chooser.getSelectedFile())) {
+                 OutputStream out = new FileOutputStream(selected)) {
                 in.transferTo(out);
                 JOptionPane.showMessageDialog(this, bundle.getString("preferences.dialog.copy.success"));
             } catch (IOException e) {
-                JOptionPane.showMessageDialog(this, bundle.getString("preferences.dialog.error").formatted(e.getMessage()));
+                String msg = String.format(bundle.getString("preferences.dialog.error"), e.getMessage());
+                JOptionPane.showMessageDialog(this, msg, "Erreur", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
+
 
     private void importPreferencesFile() {
         JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle(
-                bundle.getString("preferences.dialog.import.title"));
-
+        chooser.setDialogTitle(bundle.getString("preferences.dialog.import.title"));
+        FileNameExtensionFilter filter = new FileNameExtensionFilter(
+                bundle.getString("preferences.dialog.import.filter.label"),
+                "properties");
+        chooser.setFileFilter(filter);
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             File selectedFile = chooser.getSelectedFile();
+
+            if (!selectedFile.getName().toLowerCase().endsWith(".properties")) {
+                JOptionPane.showMessageDialog(this,
+                        bundle.getString("preferences.dialog.import.error.invalid.file"),
+                        bundle.getString("preferences.dialog.import.file.not.valid"),
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
             try (InputStream in = new FileInputStream(selectedFile);
                  OutputStream out = new FileOutputStream("myzettelkasten.properties")) {
                 in.transferTo(out);
-                JOptionPane.showMessageDialog(this,
-                        bundle.getString("preferences.dialog.import.success"));
+                JOptionPane.showMessageDialog(this, bundle.getString("preferences.dialog.import.success"));
                 restartApplication();
             } catch (IOException e) {
-                JOptionPane.showMessageDialog(this,
-                        bundle.getString("preferences.dialog.error").formatted(e.getMessage()));
+                String msg = String.format(bundle.getString("preferences.dialog.error"), e.getMessage());
+                JOptionPane.showMessageDialog(this, msg, "Erreur", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
+
 
     private void exportPreferencesFile() {
         JFileChooser chooser = new JFileChooser();
