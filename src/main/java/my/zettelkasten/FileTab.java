@@ -14,7 +14,15 @@ class FileTab extends JPanel {
         super(new BorderLayout());
         this.file = file;
         this.textArea = new JTextArea(content);
+        this.textArea.setFont(FontPreferences.getFont());
+
         add(new JScrollPane(textArea), BorderLayout.CENTER);
+    }
+
+    public void setFont(Font font) {
+        if (textArea != null) {
+            textArea.setFont(font);
+        }
     }
 
     public File getFile() {

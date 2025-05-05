@@ -33,13 +33,12 @@ public class TextEditorApp extends JFrame {
     }
 
 
-    private JList<File> fileList = null;
     private final DefaultListModel<File> listModel;
     private final JTextArea textArea;
     private final JFileChooser fileChooser;
     private File currentDirectory;
     private File currentFile;
-    public final ResourceBundle bundle;
+    public static ResourceBundle bundle;
     private JTabbedPane tabbedPane;
     private JMenuItem closeTabItem; // stocké pour mise à jour d’état
     private final java.util.List<File> allFiles = new ArrayList<>();
@@ -77,6 +76,29 @@ public class TextEditorApp extends JFrame {
                 }
             }
         });
+        fileTree.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) showPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) showPopup(e);
+            }
+
+            private void showPopup(MouseEvent e) {
+                TreePath path = fileTree.getPathForLocation(e.getX(), e.getY());
+                if (path == null) return;
+
+                fileTree.setSelectionPath(path); // sélectionne le nœud sous le clic
+                Object nodeObj = ((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject();
+
+                if (nodeObj instanceof FileNode) {
+                    fileTree.getComponentPopupMenu().show(fileTree, e.getX(), e.getY());
+                }
+            }
+        });
 
         tabbedPane = new JTabbedPane();
 
@@ -111,22 +133,10 @@ public class TextEditorApp extends JFrame {
         setupMenuBar();
         setupPopupMenu();
 
-        fileList.addMouseListener(new MouseAdapter() {
-            public void mouseClicked(MouseEvent evt) {
-                if (SwingUtilities.isRightMouseButton(evt)) {
-                    fileList.setSelectedIndex(fileList.locationToIndex(evt.getPoint()));
-                } else if (evt.getClickCount() == 2) {
-                    File selectedFile = fileList.getSelectedValue();
-                    if (selectedFile != null && selectedFile.isFile()) {
-                        openFile(selectedFile);
-                    }
-                }
-            }
-        });
-
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             public void windowClosing(WindowEvent e) {
+                AppConfig.save(); // ← sauvegarde finale
                 confirmAndExit();
             }
         });
@@ -134,6 +144,19 @@ public class TextEditorApp extends JFrame {
         setSize(800, 600);
         setLocationRelativeTo(null);
         setVisible(true);
+
+        // open the zettelkasten notes root directory
+        chooseDirectory();
+    }
+
+    public void applyFontPreferencesToOpenTabs() {
+        Font font = FontPreferences.getFont();
+        for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+            Component comp = tabbedPane.getComponentAt(i);
+            if (comp instanceof FileTab tab) {
+                tab.setFont(font);
+            }
+        }
     }
 
     private void rebuildTree() {
@@ -285,11 +308,87 @@ public class TextEditorApp extends JFrame {
     private void setupPreferencesMenu(JMenuBar menuBar) {
         JMenu preferencesMenu = new JMenu(bundle.getString("menu.preferences"));
 
-        JMenuItem preferencesItem = new JMenuItem(bundle.getString("menu.preferences"));
-        preferencesItem.addActionListener(e -> new PreferencesDialog(this));
+        JMenuItem openPrefsItem = new JMenuItem(bundle.getString("menu.preferences"));
+        openPrefsItem.addActionListener(e -> new PreferencesDialog(this));
+        preferencesMenu.add(openPrefsItem);
 
-        preferencesMenu.add(preferencesItem);
+        JMenuItem saveCopyItem = new JMenuItem(bundle.getString("preferences.menu.copy"));
+        saveCopyItem.addActionListener(e -> savePreferencesCopy());
+        preferencesMenu.add(saveCopyItem);
+
+        JMenuItem importItem = new JMenuItem(bundle.getString("preferences.menu.import"));
+        importItem.addActionListener(e -> importPreferencesFile());
+        preferencesMenu.add(importItem);
+
+        JMenuItem exportItem = new JMenuItem(bundle.getString("preferences.menu.export"));
+        exportItem.addActionListener(e -> exportPreferencesFile());
+        preferencesMenu.add(exportItem);
+
+        preferencesMenu.addSeparator();
+
+        JMenuItem resetPrefsItem = new JMenuItem(bundle.getString("preferences.menu.reset"));
+        resetPrefsItem.addActionListener(e -> resetConfigurationFile());
+        preferencesMenu.add(resetPrefsItem);
+
         menuBar.add(preferencesMenu);
+
+    }
+
+    private void savePreferencesCopy() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle(bundle.getString("preferences.menu.copy"));
+        chooser.setSelectedFile(new File("myzettelkasten-copy.properties"));
+
+        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try (InputStream in = new FileInputStream("myzettelkasten.properties");
+                 OutputStream out = new FileOutputStream(chooser.getSelectedFile())) {
+                in.transferTo(out);
+                JOptionPane.showMessageDialog(this, bundle.getString("preferences.dialog.copy.success"));
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, bundle.getString("preferences.dialog.error").formatted(e.getMessage()));
+            }
+        }
+    }
+
+    private void importPreferencesFile() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle(
+                bundle.getString("preferences.dialog.import.title"));
+
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File selectedFile = chooser.getSelectedFile();
+            try (InputStream in = new FileInputStream(selectedFile);
+                 OutputStream out = new FileOutputStream("myzettelkasten.properties")) {
+                in.transferTo(out);
+                JOptionPane.showMessageDialog(this,
+                        bundle.getString("preferences.dialog.import.success"));
+                restartApplication();
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this,
+                        bundle.getString("preferences.dialog.error").formatted(e.getMessage()));
+            }
+        }
+    }
+
+    private void exportPreferencesFile() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle(
+                bundle.getString("preferences.dialog.export.title"));
+        chooser.setSelectedFile(new File("myzettelkasten-export.properties"));
+
+        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File current = new File("myzettelkasten.properties");
+            File target = chooser.getSelectedFile();
+            try (InputStream in = new FileInputStream(current);
+                 OutputStream out = new FileOutputStream(target)) {
+                in.transferTo(out);
+                JOptionPane.showMessageDialog(this,
+                        bundle.getString("preferences.dialog.export.success"));
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this,
+                        bundle.getString("preferences.dialog.error").formatted(e.getMessage()));
+            }
+        }
     }
 
     private void setupMenuBar() {
@@ -357,12 +456,17 @@ public class TextEditorApp extends JFrame {
 
         JMenuItem openItem = new JMenuItem(bundle.getString("menu.open"));
         openItem.addActionListener(e -> {
-            File selected = fileList.getSelectedValue();
-            if (selected != null && selected.isFile()) openFile(selected);
+            TreePath path = fileTree.getSelectionPath();
+            if (path == null) return;
+
+            Object nodeObj = ((DefaultMutableTreeNode) path.getLastPathComponent()).getUserObject();
+            if (nodeObj instanceof FileNode fileNode) {
+                openFile(fileNode.file);
+            }
         });
 
         JMenuItem saveItem = new JMenuItem(bundle.getString("menu.save"));
-        saveItem.addActionListener(e -> saveFile(currentFile));
+        saveItem.addActionListener(e -> saveCurrentTab()); // agit sur l'onglet actif
 
         JMenuItem quitItem = new JMenuItem(bundle.getString("menu.quit"));
         quitItem.addActionListener(e -> confirmAndExit());
@@ -372,10 +476,20 @@ public class TextEditorApp extends JFrame {
         popup.addSeparator();
         popup.add(quitItem);
 
-        fileList.setComponentPopupMenu(popup);
+        fileTree.setComponentPopupMenu(popup);
     }
 
     private void chooseDirectory() {
+        String lastPath = AppConfig.get("lastDirectory", null);
+        if (lastPath != null) {
+            File lastDir = new File(lastPath);
+            if (lastDir.exists() && lastDir.isDirectory()) {
+                currentDirectory = lastDir;
+                loadFiles(currentDirectory);
+                return;
+            }
+        }
+
         JFileChooser dirChooser = new JFileChooser();
         dirChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
         dirChooser.setDialogTitle(bundle.getString("menu.choose.directory"));
@@ -383,6 +497,8 @@ public class TextEditorApp extends JFrame {
         int result = dirChooser.showOpenDialog(this);
         if (result == JFileChooser.APPROVE_OPTION) {
             currentDirectory = dirChooser.getSelectedFile();
+            AppConfig.set("lastDirectory", currentDirectory.getAbsolutePath());
+            AppConfig.save();
             loadFiles(currentDirectory);
         }
     }
@@ -406,8 +522,8 @@ public class TextEditorApp extends JFrame {
         String baseName = name.contains(".") ? name.substring(0, name.lastIndexOf('.')) : name;
 
         String datetimePart = "";
-        if (baseName.matches("^\\d{8}(\\d{4})?\\s?.*")) {
-            int end = baseName.indexOf(' ');
+        if (baseName.matches("^\\d{12}?\\s?.*")) {
+            int end = baseName.indexOf('-');
             datetimePart = end == -1 ? baseName : baseName.substring(0, end);
         }
 
@@ -502,18 +618,54 @@ public class TextEditorApp extends JFrame {
         System.exit(0);
     }
 
+    private void resetConfigurationFile() {
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Voulez-vous vraiment réinitialiser toutes les préférences ?",
+                "Réinitialiser",
+                JOptionPane.YES_NO_OPTION);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            File configFile = new File("myzettelkasten.properties");
+            if (configFile.exists()) {
+                if (configFile.delete()) {
+                    JOptionPane.showMessageDialog(this, "Les préférences ont été réinitialisées.\nL'application va redémarrer.");
+                    restartApplication();
+                } else {
+                    JOptionPane.showMessageDialog(this, "Impossible de supprimer le fichier de configuration.");
+                }
+            } else {
+                JOptionPane.showMessageDialog(this, "Aucune préférence à réinitialiser.");
+            }
+        }
+    }
+
+    private void restartApplication() {
+        try {
+            String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
+            File jarFile = new File(TextEditorApp.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+
+            if (!jarFile.getName().endsWith(".jar")) {
+                JOptionPane.showMessageDialog(this, "Redémarrage automatique non disponible en mode développement.");
+                System.exit(0);
+            }
+
+            List<String> command = new ArrayList<>();
+            command.add(javaBin);
+            command.add("-jar");
+            command.add(jarFile.getPath());
+
+            new ProcessBuilder(command).start();
+            System.exit(0);
+
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this, "Erreur lors du redémarrage : " + e.getMessage());
+            System.exit(1);
+        }
+    }
+
     private void showError(String key, String detail) {
         String msg = MessageFormat.format(bundle.getString(key), detail);
         JOptionPane.showMessageDialog(this, msg, "Erreur", JOptionPane.ERROR_MESSAGE);
-    }
-
-    static class FileCellRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                      boolean isSelected, boolean cellHasFocus) {
-            File file = (File) value;
-            return super.getListCellRendererComponent(list, file.getName(), index, isSelected, cellHasFocus);
-        }
     }
 
     public static void main(String[] args) {

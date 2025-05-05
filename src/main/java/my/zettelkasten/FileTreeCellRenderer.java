@@ -4,7 +4,8 @@ import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import java.awt.*;
-import java.io.File;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class FileTreeCellRenderer extends DefaultTreeCellRenderer {
     private final Icon noteIcon = UIManager.getIcon("FileView.fileIcon");
@@ -18,34 +19,43 @@ public class FileTreeCellRenderer extends DefaultTreeCellRenderer {
 
         Object userObject = ((DefaultMutableTreeNode) value).getUserObject();
         if (userObject instanceof TextEditorApp.FileNode fileNode) {
-            String name = fileNode.file.getName();
-            String baseName = name.contains(".") ? name.substring(0, name.lastIndexOf('.')) : name;
+            String[] name = extractDateAndTitle(fileNode.file.getName());
 
-            String datetimePart = "";
-            String titlePart = "";
-
-            if (baseName.matches("^\\d{8}(\\d{4})?(\\s.*)?")) {
-                int dateEnd = baseName.indexOf(' ');
-                if (dateEnd == -1) {
-                    datetimePart = baseName;
-                } else {
-                    datetimePart = baseName.substring(0, dateEnd);
-                    titlePart = baseName.substring(dateEnd + 1);
-                }
-            } else {
-                titlePart = baseName;
-            }
+            String datetimePart = name[0];
+            String titlePart = name[1];
 
             StringBuilder labelText = new StringBuilder("<html><b>").append(datetimePart).append("</b>");
+            if (!datetimePart.isEmpty() && !titlePart.isEmpty()) {
+                labelText.append(" - ");
+            }
             if (!titlePart.isEmpty()) {
-                labelText.append(" &nbsp;|&nbsp; ").append(titlePart);
+                labelText.append(titlePart.replaceAll("-", " "));
             }
             labelText.append("</html>");
 
             label.setText(labelText.toString());
-            label.setIcon(baseName.toLowerCase().contains("brouillon") ? draftIcon : noteIcon);
+            label.setIcon(titlePart.toLowerCase().contains("brouillon") ? draftIcon : noteIcon);
         }
 
         return label;
     }
+
+    private String[] extractDateAndTitle(String filename) {
+        // Enlève l’extension
+        String name = filename.contains(".") ? filename.substring(0, filename.lastIndexOf('.')) : filename;
+
+        // Match : 8 ou 12 chiffres en début (yyyyMMdd ou yyyyMMddHHmm)
+        Pattern pattern = Pattern.compile("^(\\d{12}?)-(\\s?.*)");
+        Matcher matcher = pattern.matcher(name);
+
+        if (matcher.matches()) {
+            String date = matcher.group(1);
+            String title = matcher.group(2) != null ? matcher.group(2) : filename;
+            return new String[]{date, title};
+        }
+
+        // fallback
+        return new String[]{"", name};
+    }
+
 }
