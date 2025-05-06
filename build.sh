@@ -9,6 +9,7 @@
 project_name=MyZettelkasten
 project_version=0.0.1
 main_class=my.zettelkasten.TextEditorApp
+JARS=./libs/flexmark-all-0.64.8-lib.jar
 #
 #--- DO NOT CHANGE THE FOLLOWING LINES ---
 #
@@ -24,14 +25,25 @@ find src/main/java src/main/resources -name "*.java"
 echo ---
 echo "compile..."
 # shellcheck disable=SC2046
-javac -d target/classes $(find src/main/java src/main/resources -name "*.java")
+javac -d target/classes -cp ./libs/* $(find src/main/java src/main/resources -name "*.java")
 cp -vr src/main/resources/* target/classes/
 echo "done."
+echo ---
+echo Create MANIFEST...
+echo """Manifest-Version: ${project_name}
+Main-Class: ${main_class}
+Class-Path: ${JARS}
+Implementation-Title: ${project_name}
+Implementation-Version: ${project_version}
+""" >>target/MANIFEST.MF
+
 echo ---
 echo "build jar..."
 for app in ${main_class}
 do
   echo ">> for ${project_name}.$app..."
-  jar cvfe target/build/${project_name}-$app-${project_version}.jar $app -C target/classes .
+  jar cvfm target/build/${project_name}-$app-${project_version}.jar target/MANIFEST.MF -C target/classes .
+  mkdir -p target/build/libs
+  cp -vr ./libs/*.jar target/build/libs
   echo "done."
 done

@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="flexmark-all-0.64.8-lib">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/libs/flexmark-all-0.64.8-lib.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

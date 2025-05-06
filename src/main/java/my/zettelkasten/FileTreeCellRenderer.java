@@ -27,7 +27,7 @@ public class FileTreeCellRenderer extends DefaultTreeCellRenderer {
             String[] name = extractDateAndTitle(fileNode.file.getName());
 
             String datetimePart = name[0];
-            String titlePart = name[1];
+            String titlePart = name[1].replaceAll("-", " ");
 
             boolean isOpen = app.isFileOpen(fileNode.file);
             String dateStyle = isOpen ? "color:blue; font-weight:bold;" : "font-weight:bold;";
@@ -36,9 +36,9 @@ public class FileTreeCellRenderer extends DefaultTreeCellRenderer {
                     ? "<span style='" + dateStyle + "'>" + datetimePart + "</span> | " + titlePart
                     : titlePart;
 
-            String shortLabel = truncateToFit(label, fullLabel, AppConfig.getTreeTitleMaxWidth());
+           // String shortLabel = truncateToFit(label, fullLabel, AppConfig.getTreeTitleMaxWidth());
 
-            label.setText("<html>" + highlightDate(shortLabel) + "</html>");
+            label.setText("<html>" + highlightDate(fullLabel) + "</html>");
             label.setIcon(titlePart.toLowerCase().contains("brouillon") ? draftIcon : noteIcon);
         }
 
